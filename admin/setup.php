@@ -78,6 +78,10 @@ $item = $formSetup->newItem('AIASSISTANT_ENABLE_THIRDPARTY')->setAsYesNo();
 $item->nameText = $langs->trans("AiAssistantEnableThirdparty");
 $item = $formSetup->newItem('AIASSISTANT_ENABLE_PRODUCTS')->setAsYesNo();
 $item->nameText = $langs->trans("AiAssistantEnableProducts");
+$item = $formSetup->newItem('AIASSISTANT_ENABLE_PROPAL')->setAsYesNo();
+$item->nameText = $langs->trans("AiAssistantEnablePropal");
+$item = $formSetup->newItem('AIASSISTANT_ENABLE_TICKETS')->setAsYesNo();
+$item->nameText = $langs->trans("AiAssistantEnableTickets");
 
 include DOL_DOCUMENT_ROOT.'/core/actions_setmoduleoptions.inc.php';
 

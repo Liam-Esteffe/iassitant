@@ -17,7 +17,7 @@
 
 /**
  * \defgroup   aiassistant     Module AiAssistant
- * \brief      AI business assistant widget for the Dolibarr home dashboard.
+ * \brief      AI business assistant page and home widget for Dolibarr.
  *
  * \file       htdocs/custom/aiassistant/core/modules/modAiAssistant.class.php
  * \ingroup    aiassistant
@@ -51,7 +51,7 @@ class modAiAssistant extends DolibarrModules
 		$this->descriptionlong = "AiAssistantDescriptionLong";
 		$this->editor_name = 'Liam Esteffe';
 		$this->editor_url = 'https://github.com/Liam-Esteffe/iassitant';
-		$this->version = '1.1.0';
+		$this->version = '1.2.0';
 		$this->const_name = 'MAIN_MODULE_'.strtoupper($this->name);
 		$this->picto = 'fa-magic';
 
@@ -92,6 +92,8 @@ class modAiAssistant extends DolibarrModules
 			3 => array('AIASSISTANT_ENABLE_ORDERS', 'chaine', '1', 'Allow order analysis and draft actions', 0),
 			4 => array('AIASSISTANT_ENABLE_THIRDPARTY', 'chaine', '1', 'Allow third-party analysis and actions', 0),
 			5 => array('AIASSISTANT_ENABLE_PRODUCTS', 'chaine', '1', 'Allow product analysis and actions', 0),
+			6 => array('AIASSISTANT_ENABLE_PROPAL', 'chaine', '1', 'Allow proposal analysis and draft actions', 0),
+			7 => array('AIASSISTANT_ENABLE_TICKETS', 'chaine', '1', 'Allow ticket analysis and create actions', 0),
 		);
 
 		if (!isModEnabled("aiassistant")) {
@@ -125,6 +127,37 @@ class modAiAssistant extends DolibarrModules
 		$this->rights[$r][5] = 'write';
 
 		$this->menu = array();
+		$r = 0;
+		$this->menu[$r++] = array(
+			'fk_menu' => '',
+			'type' => 'top',
+			'titre' => 'ModuleAiAssistantName',
+			'prefix' => img_picto('', $this->picto, 'class="pictofixedwidth valignmiddle"'),
+			'mainmenu' => 'aiassistant',
+			'leftmenu' => '',
+			'url' => '/aiassistant/assistant.php',
+			'langs' => 'aiassistant@aiassistant',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("aiassistant")',
+			'perms' => '$user->hasRight("aiassistant", "assistant", "read")',
+			'target' => '',
+			'user' => 0,
+		);
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=aiassistant',
+			'type' => 'left',
+			'titre' => 'AiAssistantMenuAssistant',
+			'prefix' => img_picto('', $this->picto, 'class="pictofixedwidth valignmiddle paddingright"'),
+			'mainmenu' => 'aiassistant',
+			'leftmenu' => 'aiassistant',
+			'url' => '/aiassistant/assistant.php',
+			'langs' => 'aiassistant@aiassistant',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("aiassistant")',
+			'perms' => '$user->hasRight("aiassistant", "assistant", "read")',
+			'target' => '',
+			'user' => 0,
+		);
 	}
 
 	/**

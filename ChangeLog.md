@@ -1,5 +1,12 @@
 # ChangeLog
 
+## 1.2.0
+
+- Add a dedicated full-page Assistant (top/left menu) while keeping the Home widget
+- Add draft proposal (`propal.create_draft`) and ticket (`ticket.create`) actions
+- Prefill unpaid invoice reminders and send the email after confirmation
+- Add setup switches for proposals and tickets, plus extra quick prompts
+
 ## 1.1.0
 
 - Add read/write permissions for the assistant

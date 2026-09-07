@@ -25,7 +25,11 @@ require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
 require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
 require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
 require_once DOL_DOCUMENT_ROOT.'/commande/class/commande.class.php';
+require_once DOL_DOCUMENT_ROOT.'/comm/propal/class/propal.class.php';
+require_once DOL_DOCUMENT_ROOT.'/ticket/class/ticket.class.php';
 require_once DOL_DOCUMENT_ROOT.'/ai/class/ai.class.php';
+require_once DOL_DOCUMENT_ROOT.'/core/class/CMailFile.class.php';
+require_once DOL_DOCUMENT_ROOT.'/comm/action/class/actioncomm.class.php';
 
 /**
  * Validate and execute confirmed assistant actions.
@@ -73,10 +77,17 @@ class AiAction
 		}
 		if (getDolGlobalInt('AIASSISTANT_ENABLE_INVOICES', 1)) {
 			$types[] = 'invoice.create_draft';
+			$types[] = 'invoice.send_reminder';
 			$types[] = 'invoice.draft_reminder';
 		}
 		if (getDolGlobalInt('AIASSISTANT_ENABLE_ORDERS', 1)) {
 			$types[] = 'order.create_draft';
+		}
+		if (getDolGlobalInt('AIASSISTANT_ENABLE_PROPAL', 1) && isModEnabled('propal')) {
+			$types[] = 'propal.create_draft';
+		}
+		if (getDolGlobalInt('AIASSISTANT_ENABLE_TICKETS', 1) && isModEnabled('ticket')) {
+			$types[] = 'ticket.create';
 		}
 		return $types;
 	}
@@ -87,9 +98,10 @@ class AiAction
 	 * @param	array<int,array<string,mixed>>	$actions	Actions proposed by the model
 	 * @param	User							$user		Current user
 	 * @param	string							$question	Original user question
+	 * @param	Translate						$langs		Language handler
 	 * @return	array<int,array{id:string,type:string,label:string,preview:array<int,array{label:string,value:string}>}>
 	 */
-	public function storeProposedActions(array $actions, User $user, $question = '')
+	public function storeProposedActions(array $actions, User $user, $question, Translate $langs)
 	{
 		$allowed = $this->getAllowedTypes();
 		$safe = array();
@@ -106,6 +118,14 @@ class AiAction
 				continue;
 			}
 			$payload = (isset($action['payload']) && is_array($action['payload'])) ? $action['payload'] : array();
+			if ($type === 'invoice.draft_reminder' || $type === 'invoice.send_reminder') {
+				$type = 'invoice.send_reminder';
+				$prepared = $this->prepareInvoiceReminder($payload, $user, $langs);
+				if ($prepared === null) {
+					continue;
+				}
+				$payload = $prepared;
+			}
 			$id = dol_hash(uniqid((string) $user->id, true).mt_rand(), 'md5');
 			$_SESSION[self::SESSION_KEY][$id] = array(
 				'type' => $type,
@@ -188,8 +208,13 @@ class AiAction
 				return $this->createInvoiceDraft($payload, $user, $langs);
 			case 'order.create_draft':
 				return $this->createOrderDraft($payload, $user, $langs);
+			case 'propal.create_draft':
+				return $this->createPropalDraft($payload, $user, $langs);
+			case 'ticket.create':
+				return $this->createTicket($payload, $user, $langs);
+			case 'invoice.send_reminder':
 			case 'invoice.draft_reminder':
-				return $this->draftInvoiceReminder($payload, $user, $langs);
+				return $this->sendInvoiceReminder($payload, $user, $langs);
 			default:
 				$this->error = $langs->trans("AiAssistantUnknownAction");
 				return -1;
@@ -505,53 +530,280 @@ class AiAction
 	}
 
 	/**
-	 * Generate a reminder text. No email is sent.
-	 *
 	 * @param	array		$payload	Payload
 	 * @param	User		$user		Current user
 	 * @param	Translate	$langs		Language handler
 	 * @return	array{success:bool,message:string,url?:string}|int<-1,-1>
 	 */
-	protected function draftInvoiceReminder(array $payload, User $user, Translate $langs)
+	protected function createPropalDraft(array $payload, User $user, Translate $langs)
 	{
-		if (!isModEnabled('facture') || !$user->hasRight('facture', 'lire')) {
+		if (!isModEnabled('propal') || !$user->hasRight('propal', 'creer')) {
 			$this->error = $langs->trans("AiAssistantPermissionDenied");
 			return -1;
 		}
 
-		$facture = new Facture($this->db);
-		$id = (int) ($payload['invoice_id'] ?? ($payload['id'] ?? 0));
-		$ref = $this->sanitizeString($payload['ref'] ?? '');
-		$result = 0;
-		if ($id > 0) {
-			$result = $facture->fetch($id);
-		} elseif ($ref !== '') {
-			$result = $facture->fetch(0, $ref);
-		}
-		if ($result <= 0) {
+		$soc = $this->findThirdparty($payload, $user);
+		if (empty($soc->id)) {
 			$this->error = $langs->trans("AiAssistantObjectNotFound");
 			return -1;
 		}
 
-		$soc = new Societe($this->db);
-		$soc->fetch($facture->socid);
+		$propal = new Propal($this->db);
+		$propal->socid = $soc->id;
+		$propal->date = dol_now();
+		$propal->datep = dol_now();
+		$propal->duree_validite = getDolGlobalInt('PROPALE_VALIDITY_DURATION', 15);
+		$propal->cond_reglement_id = $soc->cond_reglement_id;
+		$propal->mode_reglement_id = $soc->mode_reglement_id;
 
-		$instructions = "Write a short polite payment reminder email in the user language (".$langs->defaultlang."). ";
-		$instructions .= "Do not add explanations. Invoice ref: ".$facture->ref.". ";
-		$instructions .= "Third party: ".$soc->name.". Total TTC: ".$facture->total_ttc.". ";
-		$instructions .= "Due date: ".dol_print_date($facture->date_lim_reglement, 'day').".";
-
-		$ai = new Ai($this->db);
-		$generated = $ai->generateContent($instructions, 'auto', 'textgenerationemail', 'text');
-		if (is_array($generated) && !empty($generated['error'])) {
-			$this->error = $generated['message'] ?: $langs->trans("AiAssistantErrorGeneric");
+		$id = $propal->create($user);
+		if ($id <= 0) {
+			$this->error = $propal->error ?: $langs->trans("AiAssistantErrorGeneric");
+			$this->errors = $propal->errors;
 			return -1;
 		}
 
-		dol_syslog('AiAssistant invoice.draft_reminder id='.$facture->id.' user='.$user->id, LOG_INFO);
+		$lines = $this->normalizeLines($payload['lines'] ?? array());
+		foreach ($lines as $line) {
+			$result = $propal->addline(
+				$line['desc'],
+				$line['price'],
+				$line['qty'],
+				$line['tva_tx'],
+				0,
+				0,
+				$line['fk_product']
+			);
+			if ($result < 0) {
+				$this->error = $propal->error ?: $langs->trans("AiAssistantErrorGeneric");
+				return -1;
+			}
+		}
+
+		$propal->fetch($id);
+		dol_syslog('AiAssistant propal.create_draft id='.$id.' user='.$user->id, LOG_INFO);
 		return array(
 			'success' => true,
-			'message' => $langs->trans("AiAssistantReminderTitle")."\n".trim((string) $generated),
+			'message' => $langs->trans("AiAssistantCreated"),
+			'url' => $propal->getNomUrl(1),
+			'object_type' => 'propal',
+			'fk_object' => (int) $id,
+			'object_ref' => $propal->ref,
+		);
+	}
+
+	/**
+	 * @param	array		$payload	Payload
+	 * @param	User		$user		Current user
+	 * @param	Translate	$langs		Language handler
+	 * @return	array{success:bool,message:string,url?:string}|int<-1,-1>
+	 */
+	protected function createTicket(array $payload, User $user, Translate $langs)
+	{
+		if (!isModEnabled('ticket') || !$user->hasRight('ticket', 'write')) {
+			$this->error = $langs->trans("AiAssistantPermissionDenied");
+			return -1;
+		}
+
+		$subject = $this->sanitizeString($payload['subject'] ?? '');
+		$message = $this->sanitizeString($payload['message'] ?? ($payload['body'] ?? ''));
+		if ($subject === '' || $message === '') {
+			$this->error = $langs->trans("AiAssistantMissingField");
+			return -1;
+		}
+
+		$soc = $this->findThirdparty($payload, $user);
+
+		$ticket = new Ticket($this->db);
+		$ticket->ref = $ticket->getDefaultRef(!empty($soc->id) ? $soc : null);
+		if ($ticket->ref === '') {
+			$this->error = $langs->trans("AiAssistantErrorGeneric");
+			return -1;
+		}
+		$ticket->subject = $subject;
+		$ticket->message = $message;
+		$ticket->fk_soc = !empty($soc->id) ? (int) $soc->id : null;
+		$ticket->socid = $ticket->fk_soc;
+		$ticket->type_code = $this->sanitizeTicketCode($payload['type_code'] ?? 'OTHER', 'OTHER');
+		$ticket->category_code = $this->sanitizeTicketCode($payload['category_code'] ?? 'OTHER', 'OTHER');
+		$ticket->severity_code = $this->sanitizeTicketCode($payload['severity_code'] ?? 'NORMAL', 'NORMAL');
+		$ticket->status = Ticket::STATUS_NOT_READ;
+
+		$id = $ticket->create($user);
+		if ($id <= 0) {
+			$this->error = $ticket->error ?: $langs->trans("AiAssistantErrorGeneric");
+			$this->errors = $ticket->errors;
+			return -1;
+		}
+
+		$ticket->fetch($id);
+		dol_syslog('AiAssistant ticket.create id='.$id.' user='.$user->id, LOG_INFO);
+		return array(
+			'success' => true,
+			'message' => $langs->trans("AiAssistantCreated"),
+			'url' => $ticket->getNomUrl(1),
+			'object_type' => 'ticket',
+			'fk_object' => (int) $id,
+			'object_ref' => $ticket->ref,
+		);
+	}
+
+	/**
+	 * Prefill reminder email before it is stored in session.
+	 *
+	 * @param	array		$payload	Raw payload
+	 * @param	User		$user		Current user
+	 * @param	Translate	$langs		Language handler
+	 * @return	array<string,mixed>|null
+	 */
+	protected function prepareInvoiceReminder(array $payload, User $user, Translate $langs)
+	{
+		if (!$this->canSendInvoiceMail($user)) {
+			return null;
+		}
+
+		$facture = $this->findInvoice($payload);
+		if (empty($facture->id)) {
+			return null;
+		}
+		if ((int) $facture->status === Facture::STATUS_DRAFT || !empty($facture->paye) || (int) $facture->status !== Facture::STATUS_VALIDATED) {
+			return null;
+		}
+
+		$soc = new Societe($this->db);
+		if ($soc->fetch($facture->socid) <= 0) {
+			return null;
+		}
+
+		$to = $this->resolveInvoiceRecipient($facture);
+		if ($to === '') {
+			return null;
+		}
+
+		$subject = $this->sanitizeString($payload['subject'] ?? '');
+		$body = trim((string) ($payload['body'] ?? ''));
+		if ($subject === '' || $body === '') {
+			$instructions = "Write a short polite payment reminder email in the user language (".$langs->defaultlang."). ";
+			$instructions .= "Return ONLY valid JSON: {\"subject\":\"...\",\"body\":\"...\"}. ";
+			$instructions .= "Do not add explanations. Invoice ref: ".$facture->ref.". ";
+			$instructions .= "Third party: ".$soc->name.". Total TTC: ".$facture->total_ttc.". ";
+			$instructions .= "Due date: ".dol_print_date($facture->date_lim_reglement, 'day').".";
+
+			$ai = new Ai($this->db);
+			$generated = $ai->generateContent($instructions, 'auto', 'textgenerationemail', 'text');
+			if (is_array($generated) && !empty($generated['error'])) {
+				return null;
+			}
+
+			$parsed = $this->parseGeneratedEmail((string) $generated);
+			if ($subject === '') {
+				$subject = $parsed['subject'] !== '' ? $parsed['subject'] : $langs->trans("AiAssistantMailSubject", $facture->ref);
+			}
+			if ($body === '') {
+				$body = $parsed['body'];
+			}
+		}
+
+		$body = trim($body);
+		if ($body === '') {
+			return null;
+		}
+
+		return array(
+			'invoice_id' => (int) $facture->id,
+			'ref' => $facture->ref,
+			'to' => $to,
+			'subject' => $subject,
+			'body' => $body,
+		);
+	}
+
+	/**
+	 * Send a previously prepared invoice reminder.
+	 *
+	 * @param	array		$payload	Prepared payload
+	 * @param	User		$user		Current user
+	 * @param	Translate	$langs		Language handler
+	 * @return	array{success:bool,message:string,url?:string}|int<-1,-1>
+	 */
+	protected function sendInvoiceReminder(array $payload, User $user, Translate $langs)
+	{
+		if (!$this->canSendInvoiceMail($user)) {
+			$this->error = $langs->trans("AiAssistantPermissionDenied");
+			return -1;
+		}
+
+		$from = getDolGlobalString('MAIN_MAIL_EMAIL_FROM');
+		if ($from === '') {
+			$this->error = $langs->trans("AiAssistantMailNotConfigured");
+			return -1;
+		}
+
+		$facture = $this->findInvoice($payload);
+		if (empty($facture->id)) {
+			$this->error = $langs->trans("AiAssistantObjectNotFound");
+			return -1;
+		}
+		if ((int) $facture->status === Facture::STATUS_DRAFT || !empty($facture->paye) || (int) $facture->status !== Facture::STATUS_VALIDATED) {
+			$this->error = $langs->trans("AiAssistantMailInvoiceNotSendable");
+			return -1;
+		}
+
+		$to = $this->sanitizeString($payload['to'] ?? '');
+		$subject = $this->sanitizeString($payload['subject'] ?? '');
+		$body = trim((string) ($payload['body'] ?? ''));
+		if ($to === '' || $subject === '' || $body === '') {
+			$this->error = $langs->trans("AiAssistantMissingField");
+			return -1;
+		}
+
+		$facture->fetch_thirdparty();
+
+		$joinFile = array();
+		$joinFileName = array();
+		$joinFileMime = array();
+		if (!empty($facture->last_main_doc)) {
+			$path = DOL_DATA_ROOT.'/'.$facture->last_main_doc;
+			if (is_readable($path)) {
+				$joinFile[] = $path;
+				$joinFileName[] = basename($path);
+				$joinFileMime[] = dol_mimetype($path);
+			}
+		}
+
+		$errorsTo = getDolGlobalString('MAIN_MAIL_ERRORS_TO');
+		$cMailFile = new CMailFile($subject, $to, $from, $body, $joinFile, $joinFileMime, $joinFileName, '', '', 0, 0, $errorsTo, '', 'inv'.$facture->id, '', 'standard', '');
+		if (!$cMailFile->sendfile()) {
+			$this->error = $cMailFile->error ?: $langs->trans("AiAssistantErrorGeneric");
+			return -1;
+		}
+
+		$actioncomm = new ActionComm($this->db);
+		$actioncomm->type_code = 'AC_OTH_AUTO';
+		$actioncomm->socid = !empty($facture->thirdparty->id) ? (int) $facture->thirdparty->id : (int) $facture->socid;
+		$actioncomm->contact_id = 0;
+		$actioncomm->code = 'AC_EMAIL';
+		$actioncomm->label = 'AiAssistant invoice.send_reminder '.$facture->ref;
+		$actioncomm->note_private = $body;
+		$actioncomm->fk_project = $facture->fk_project;
+		$actioncomm->datep = dol_now();
+		$actioncomm->datef = $actioncomm->datep;
+		$actioncomm->percentage = -1;
+		$actioncomm->authorid = $user->id;
+		$actioncomm->userownerid = $user->id;
+		$actioncomm->email_msgid = $cMailFile->msgid;
+		$actioncomm->email_subject = $subject;
+		$actioncomm->email_from = $from;
+		$actioncomm->email_to = $to;
+		$actioncomm->errors_to = $errorsTo;
+		$actioncomm->elementtype = 'invoice';
+		$actioncomm->elementid = $facture->id;
+		$actioncomm->create($user);
+
+		dol_syslog('AiAssistant invoice.send_reminder id='.$facture->id.' user='.$user->id, LOG_INFO);
+		return array(
+			'success' => true,
+			'message' => $langs->trans("AiAssistantMailSent"),
 			'url' => $facture->getNomUrl(1),
 			'object_type' => 'facture',
 			'fk_object' => (int) $facture->id,
@@ -594,6 +846,123 @@ class AiAction
 		}
 
 		return $soc;
+	}
+
+	/**
+	 * @param	array	$payload	Payload with invoice_id/id/ref
+	 * @return	Facture
+	 */
+	protected function findInvoice(array $payload)
+	{
+		$facture = new Facture($this->db);
+		$id = (int) ($payload['invoice_id'] ?? ($payload['id'] ?? 0));
+		$ref = $this->sanitizeString($payload['ref'] ?? '');
+		if ($id > 0) {
+			$facture->fetch($id);
+		} elseif ($ref !== '') {
+			$facture->fetch(0, $ref);
+		}
+		return $facture;
+	}
+
+	/**
+	 * @param	User	$user	Current user
+	 * @return	bool
+	 */
+	protected function canSendInvoiceMail(User $user)
+	{
+		if (!isModEnabled('facture') || !$user->hasRight('facture', 'lire')) {
+			return false;
+		}
+		if (getDolGlobalString('MAIN_USE_ADVANCED_PERMS') && !$user->hasRight('facture', 'invoice_advance', 'send')) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * @param	Facture	$facture	Invoice
+	 * @return	string
+	 */
+	protected function resolveInvoiceRecipient(Facture $facture)
+	{
+		$facture->fetch_thirdparty();
+		$to = array();
+		$contacts = $facture->liste_contact(-1, 'external', 0, 'BILLING');
+		if (is_array($contacts)) {
+			foreach ($contacts as $contact) {
+				if (!empty($contact['email'])) {
+					$to[] = $contact['email'];
+				} elseif (!empty($contact['id']) && !empty($facture->thirdparty->id)) {
+					$email = $facture->thirdparty->contact_get_property($contact['id'], 'email');
+					if (!empty($email)) {
+						$to[] = $email;
+					}
+				}
+			}
+		}
+		if (empty($to) && !empty($facture->thirdparty->email)) {
+			$to[] = $facture->thirdparty->email;
+		}
+		$to = array_values(array_unique(array_filter(array_map('trim', $to))));
+		return implode(',', $to);
+	}
+
+	/**
+	 * @param	string	$raw	Raw AI output
+	 * @return	array{subject:string,body:string}
+	 */
+	protected function parseGeneratedEmail($raw)
+	{
+		$result = array(
+			'subject' => '',
+			'body' => '',
+		);
+		$text = trim((string) $raw);
+		if ($text === '') {
+			return $result;
+		}
+		if (preg_match('/```(?:json)?\s*(\{.*\})\s*```/s', $text, $matches)) {
+			$text = $matches[1];
+		} else {
+			$start = strpos($text, '{');
+			$end = strrpos($text, '}');
+			if ($start !== false && $end !== false && $end > $start) {
+				$json = substr($text, $start, $end - $start + 1);
+				$decoded = json_decode($json, true);
+				if (is_array($decoded)) {
+					$result['subject'] = $this->sanitizeString($decoded['subject'] ?? '');
+					$result['body'] = trim((string) ($decoded['body'] ?? ($decoded['message'] ?? '')));
+					if ($result['body'] !== '') {
+						return $result;
+					}
+				}
+			}
+		}
+		$decoded = json_decode($text, true);
+		if (is_array($decoded)) {
+			$result['subject'] = $this->sanitizeString($decoded['subject'] ?? '');
+			$result['body'] = trim((string) ($decoded['body'] ?? ($decoded['message'] ?? '')));
+			if ($result['body'] !== '') {
+				return $result;
+			}
+		}
+		$result['body'] = trim((string) $raw);
+		return $result;
+	}
+
+	/**
+	 * @param	mixed	$value		Raw code
+	 * @param	string	$fallback	Default dictionary code
+	 * @return	string
+	 */
+	protected function sanitizeTicketCode($value, $fallback)
+	{
+		$code = strtoupper($this->sanitizeString($value));
+		if ($code === '' || !preg_match('/^[A-Z0-9_]{1,32}$/', $code)) {
+			return $fallback;
+		}
+		return $code;
 	}
 
 	/**
@@ -669,6 +1038,11 @@ class AiAction
 			'client' => 'client',
 			'fournisseur' => 'fournisseur',
 			'type' => 'product_type',
+			'subject' => 'subject',
+			'to' => 'to',
+			'type_code' => 'type_code',
+			'severity_code' => 'severity_code',
+			'category_code' => 'category_code',
 		);
 		$seen = array();
 		foreach ($simple as $from => $label) {
@@ -682,6 +1056,21 @@ class AiAction
 			$rows[] = array(
 				'label' => $label,
 				'value' => $this->sanitizeString(is_scalar($payload[$from]) ? (string) $payload[$from] : json_encode($payload[$from])),
+			);
+		}
+
+		foreach (array('body' => 'body', 'message' => 'message') as $from => $label) {
+			if (empty($payload[$from]) || isset($seen[$label])) {
+				continue;
+			}
+			$seen[$label] = 1;
+			$value = is_scalar($payload[$from]) ? (string) $payload[$from] : json_encode($payload[$from]);
+			if (dol_strlen($value) > 500) {
+				$value = dol_trunc($value, 500);
+			}
+			$rows[] = array(
+				'label' => $label,
+				'value' => $this->sanitizeString($value),
 			);
 		}
 

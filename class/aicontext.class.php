@@ -66,6 +66,8 @@ class AiContext
 			'intents' => array_keys(array_filter($intents)),
 			'invoices' => array(),
 			'orders' => array(),
+			'proposals' => array(),
+			'tickets' => array(),
 			'thirdparties' => array(),
 			'products' => array(),
 		);
@@ -75,6 +77,12 @@ class AiContext
 		}
 		if ($intents['orders'] && getDolGlobalInt('AIASSISTANT_ENABLE_ORDERS', 1) && isModEnabled('commande') && $user->hasRight('commande', 'lire')) {
 			$context['orders'] = $this->collectOrders($user, $limit);
+		}
+		if (!empty($intents['propals']) && getDolGlobalInt('AIASSISTANT_ENABLE_PROPAL', 1) && isModEnabled('propal') && $user->hasRight('propal', 'lire')) {
+			$context['proposals'] = $this->collectPropals($user, $limit);
+		}
+		if (!empty($intents['tickets']) && getDolGlobalInt('AIASSISTANT_ENABLE_TICKETS', 1) && isModEnabled('ticket') && $user->hasRight('ticket', 'read')) {
+			$context['tickets'] = $this->collectTickets($user, $limit);
 		}
 		if ($intents['thirdparties'] && getDolGlobalInt('AIASSISTANT_ENABLE_THIRDPARTY', 1) && isModEnabled('societe') && $user->hasRight('societe', 'lire')) {
 			$context['thirdparties'] = $this->collectThirdparties($user, $question, $limit);
@@ -106,10 +114,17 @@ class AiContext
 		}
 		if (getDolGlobalInt('AIASSISTANT_ENABLE_INVOICES', 1)) {
 			$allowed[] = 'invoice.create_draft';
+			$allowed[] = 'invoice.send_reminder';
 			$allowed[] = 'invoice.draft_reminder';
 		}
 		if (getDolGlobalInt('AIASSISTANT_ENABLE_ORDERS', 1)) {
 			$allowed[] = 'order.create_draft';
+		}
+		if (getDolGlobalInt('AIASSISTANT_ENABLE_PROPAL', 1) && isModEnabled('propal')) {
+			$allowed[] = 'propal.create_draft';
+		}
+		if (getDolGlobalInt('AIASSISTANT_ENABLE_TICKETS', 1) && isModEnabled('ticket')) {
+			$allowed[] = 'ticket.create';
 		}
 
 		$payloadHints = array(
@@ -118,6 +133,9 @@ class AiContext
 			'product.create' => '{ref, label, price?, tva_tx?, type?:0|1}',
 			'invoice.create_draft' => '{socid|thirdparty_name, lines:[{desc|label, qty, price, tva_tx?, fk_product?}]}',
 			'order.create_draft' => '{socid|thirdparty_name, lines:[{desc|label, qty, price, tva_tx?, fk_product?}]}',
+			'propal.create_draft' => '{socid|thirdparty_name, lines:[{desc|label, qty, price, tva_tx?, fk_product?}]}',
+			'ticket.create' => '{socid|thirdparty_name?, subject, message, type_code?, severity_code?, category_code?}',
+			'invoice.send_reminder' => '{invoice_id|ref}',
 			'invoice.draft_reminder' => '{invoice_id|ref}',
 		);
 
@@ -131,6 +149,8 @@ class AiContext
 		$instructions .= "Never invent IDs that are not in the context. Prefer analysis over action when data is missing.\n";
 		$instructions .= "Never propose invoice validation, payments, deletions or SQL.\n";
 		$instructions .= "Financial documents must stay drafts.\n";
+		$instructions .= "For unpaid validated invoices, propose invoice.send_reminder. Confirmation will send the email.\n";
+		$instructions .= "Do not propose invoice.send_reminder for draft invoices or invoices without a customer email.\n";
 		$instructions .= "Allowed action types: ".implode(', ', $allowed).".\n";
 		$instructions .= "Payload schemas:\n";
 		foreach ($payloadHints as $type => $schema) {
@@ -149,7 +169,7 @@ class AiContext
 	 * Detect which families are relevant. Unknown questions load every enabled family.
 	 *
 	 * @param	string	$question	User question
-	 * @return	array{invoices:bool,orders:bool,thirdparties:bool,products:bool}
+	 * @return	array{invoices:bool,orders:bool,propals:bool,tickets:bool,thirdparties:bool,products:bool}
 	 */
 	protected function detectIntents($question)
 	{
@@ -158,6 +178,8 @@ class AiContext
 		$intents = array(
 			'invoices' => (bool) preg_match('/facture|invoice|impay|unpaid|relance|reminder|avoir|bill|encours client/i', $q),
 			'orders' => (bool) preg_match('/commande|order|commandé|a livrer|to ship/i', $q),
+			'propals' => (bool) preg_match('/devis|propal|proposal|quote|offre/i', $q),
+			'tickets' => (bool) preg_match('/ticket|sav|support|incident/i', $q),
 			'thirdparties' => (bool) preg_match('/tiers|client|customer|fournisseur|supplier|societ|company|prospect|third\s*part/i', $q),
 			'products' => (bool) preg_match('/produit|product|stock|service|article|sku|rupture|alert/i', $q),
 		);
@@ -173,6 +195,8 @@ class AiContext
 			$intents = array(
 				'invoices' => true,
 				'orders' => true,
+				'propals' => true,
+				'tickets' => true,
 				'thirdparties' => true,
 				'products' => true,
 			);
@@ -188,7 +212,7 @@ class AiContext
 	 */
 	protected function collectInvoices(User $user, $limit)
 	{
-		$sql = "SELECT f.rowid, f.ref, f.datef, f.date_lim_reglement, f.total_ttc, f.paye, f.fk_statut as status, s.nom as thirdparty";
+		$sql = "SELECT f.rowid, f.ref, f.datef, f.date_lim_reglement, f.total_ttc, f.paye, f.fk_statut as status, s.nom as thirdparty, s.email as thirdparty_email";
 		$sql .= " FROM ".$this->db->prefix()."facture as f";
 		$sql .= " LEFT JOIN ".$this->db->prefix()."societe as s ON s.rowid = f.fk_soc";
 		$sql .= $this->joinCommercialRestriction($user, 's');
@@ -209,6 +233,7 @@ class AiContext
 				'total_ttc' => (float) $obj->total_ttc,
 				'status' => ((int) $obj->status === 0 ? 'draft' : 'unpaid'),
 				'overdue' => $overdue ? 1 : 0,
+				'email' => $obj->thirdparty_email,
 			);
 		});
 	}
@@ -239,6 +264,65 @@ class AiContext
 				'date' => $obj->date_commande,
 				'total_ttc' => (float) $obj->total_ttc,
 				'status' => $statusmap[(int) $obj->status] ?? (string) $obj->status,
+			);
+		});
+	}
+
+	/**
+	 * @param	User	$user	Current user
+	 * @param	int		$limit	Max rows
+	 * @return	array<int,array<string,mixed>>
+	 */
+	protected function collectPropals(User $user, $limit)
+	{
+		$sql = "SELECT p.rowid, p.ref, p.datep, p.total_ttc, p.fk_statut as status, s.nom as thirdparty";
+		$sql .= " FROM ".$this->db->prefix()."propal as p";
+		$sql .= " LEFT JOIN ".$this->db->prefix()."societe as s ON s.rowid = p.fk_soc";
+		$sql .= $this->joinCommercialRestriction($user, 's');
+		$sql .= " WHERE p.entity IN (".getEntity('propal').")";
+		$sql .= " AND p.fk_statut IN (0, 1)";
+		$sql .= $this->whereExternalUserRestriction($user, 's');
+		$sql .= " ORDER BY p.fk_statut ASC, p.datep DESC, p.rowid DESC";
+		$sql .= $this->db->plimit($limit);
+
+		return $this->fetchRows($sql, function ($obj) {
+			return array(
+				'id' => (int) $obj->rowid,
+				'ref' => $obj->ref,
+				'thirdparty' => $obj->thirdparty,
+				'date' => $obj->datep,
+				'total_ttc' => (float) $obj->total_ttc,
+				'status' => ((int) $obj->status === 0 ? 'draft' : 'validated'),
+			);
+		});
+	}
+
+	/**
+	 * @param	User	$user	Current user
+	 * @param	int		$limit	Max rows
+	 * @return	array<int,array<string,mixed>>
+	 */
+	protected function collectTickets(User $user, $limit)
+	{
+		$sql = "SELECT t.rowid, t.ref, t.subject, t.fk_statut as status, t.type_code, t.severity_code, s.nom as thirdparty";
+		$sql .= " FROM ".$this->db->prefix()."ticket as t";
+		$sql .= " LEFT JOIN ".$this->db->prefix()."societe as s ON s.rowid = t.fk_soc";
+		$sql .= $this->joinCommercialRestriction($user, 's');
+		$sql .= " WHERE t.entity IN (".getEntity('ticket').")";
+		$sql .= " AND t.fk_statut < 8";
+		$sql .= $this->whereExternalUserRestriction($user, 's');
+		$sql .= " ORDER BY t.fk_statut ASC, t.datec DESC, t.rowid DESC";
+		$sql .= $this->db->plimit($limit);
+
+		return $this->fetchRows($sql, function ($obj) {
+			return array(
+				'id' => (int) $obj->rowid,
+				'ref' => $obj->ref,
+				'subject' => $obj->subject,
+				'thirdparty' => $obj->thirdparty,
+				'type_code' => $obj->type_code,
+				'severity_code' => $obj->severity_code,
+				'status' => (int) $obj->status,
 			);
 		});
 	}

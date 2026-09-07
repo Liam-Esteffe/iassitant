@@ -121,3 +121,27 @@
 .aiassistant-confirm.hidden {
 	display: none;
 }
+
+.aiassistant-openfull {
+	margin: 0 0 8px;
+	text-align: right;
+}
+
+.aiassistant-widget--page {
+	padding: 4px 0 12px;
+	max-width: 960px;
+}
+
+.aiassistant-widget--page .aiassistant-messages {
+	max-height: 60vh;
+	min-height: 320px;
+}
+
+.aiassistant-widget--page .aiassistant-input {
+	min-height: 80px;
+}
+
+.aiassistant-preview dd {
+	white-space: pre-wrap;
+	word-break: break-word;
+}

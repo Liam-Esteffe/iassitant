@@ -151,3 +151,98 @@ function aiassistantCanWrite(User $user)
 {
 	return !empty($user->admin) || $user->hasRight('aiassistant', 'assistant', 'write');
 }
+
+/**
+ * Shared chat markup for the Home widget and the dedicated assistant page.
+ *
+ * @param	array{variant?:string,show_open_full?:int|bool,include_assets?:int|bool}	$options	Render options
+ * @return	string
+ */
+function aiassistantRenderChat(array $options = array())
+{
+	global $langs, $user;
+
+	$langs->load("aiassistant@aiassistant");
+
+	$variant = !empty($options['variant']) ? (string) $options['variant'] : 'widget';
+	$showOpenFull = !empty($options['show_open_full']);
+	$includeAssets = !array_key_exists('include_assets', $options) || !empty($options['include_assets']);
+
+	$ready = isModEnabled('ai') && isModEnabled('aiassistant') && aiassistantIsNativeAiConfigured();
+	$canWrite = aiassistantCanWrite($user);
+	$warning = '';
+	if (!isModEnabled('ai')) {
+		$warning = $langs->trans("AiAssistantNeedAiModule").' '.$langs->trans("AiAssistantSetupHint");
+	} elseif (!aiassistantIsNativeAiConfigured()) {
+		$warning = $langs->trans("AiAssistantNeedAiConfig").' '.$langs->trans("AiAssistantSetupHint");
+	}
+
+	$cssurl = dol_buildpath('/aiassistant/css/aiassistant.css', 1);
+	$jsurl = dol_buildpath('/aiassistant/js/aiassistant.js', 1);
+	$chaturl = dol_buildpath('/aiassistant/ajax/chat.php', 1);
+	$execurl = dol_buildpath('/aiassistant/ajax/execute.php', 1);
+	$pageurl = dol_buildpath('/aiassistant/assistant.php', 1);
+	$token = currentToken();
+
+	$prompts = array(
+		$langs->trans("AiAssistantPromptUnpaid"),
+		$langs->trans("AiAssistantPromptStock"),
+		$langs->trans("AiAssistantPromptOrders"),
+		$langs->trans("AiAssistantPromptCustomer"),
+		$langs->trans("AiAssistantPromptPropal"),
+		$langs->trans("AiAssistantPromptTicket"),
+		$langs->trans("AiAssistantPromptReminder"),
+	);
+
+	$classes = 'aiassistant-widget';
+	if ($variant === 'page') {
+		$classes .= ' aiassistant-widget--page';
+	}
+
+	$html = '';
+	if ($includeAssets) {
+		$html .= '<link rel="stylesheet" href="'.dol_escape_htmltag($cssurl).'">';
+	}
+	if ($showOpenFull) {
+		$html .= '<div class="aiassistant-openfull"><a href="'.dol_escape_htmltag($pageurl).'">'.dol_escape_htmltag($langs->trans("AiAssistantOpenFull")).'</a></div>';
+	}
+	$html .= '<div class="'.$classes.'"';
+	$html .= ' data-chat-url="'.dol_escape_htmltag($chaturl).'"';
+	$html .= ' data-execute-url="'.dol_escape_htmltag($execurl).'"';
+	$html .= ' data-token="'.dol_escape_htmltag($token).'"';
+	$html .= ' data-can-write="'.($canWrite ? '1' : '0').'"';
+	$html .= ' data-lang-send="'.dol_escape_htmltag($langs->trans("AiAssistantSend")).'"';
+	$html .= ' data-lang-confirm="'.dol_escape_htmltag($langs->trans("AiAssistantConfirm")).'"';
+	$html .= ' data-lang-execute="'.dol_escape_htmltag($langs->trans("AiAssistantExecute")).'"';
+	$html .= ' data-lang-cancel="'.dol_escape_htmltag($langs->trans("AiAssistantCancel")).'"';
+	$html .= ' data-lang-preview="'.dol_escape_htmltag($langs->trans("AiAssistantPreviewHelp")).'"';
+	$html .= ' data-lang-loading="'.dol_escape_htmltag($langs->trans("AiAssistantLoading")).'"';
+	$html .= ' data-lang-executing="'.dol_escape_htmltag($langs->trans("AiAssistantExecuting")).'"';
+	$html .= ' data-lang-empty="'.dol_escape_htmltag($langs->trans("AiAssistantEmptyQuestion")).'"';
+	$html .= ' data-lang-error="'.dol_escape_htmltag($langs->trans("AiAssistantErrorGeneric")).'"';
+	$html .= '>';
+	$html .= '<div class="aiassistant-messages">';
+	if ($warning) {
+		$html .= '<div class="aiassistant-msg aiassistant-msg-error">'.dol_escape_htmltag($warning).'</div>';
+	} else {
+		$html .= '<div class="aiassistant-msg aiassistant-msg-bot">'.dol_escape_htmltag($langs->trans("AiAssistantWelcome")).'</div>';
+	}
+	$html .= '</div>';
+	if ($ready) {
+		$html .= '<div class="aiassistant-quickbar">';
+		foreach ($prompts as $label) {
+			$html .= '<button type="button" class="butAction aiassistant-quick" data-prompt="'.dol_escape_htmltag($label).'">'.dol_escape_htmltag($label).'</button>';
+		}
+		$html .= '</div>';
+	}
+	$html .= '<form class="aiassistant-form" action="#" method="POST">';
+	$html .= '<textarea class="aiassistant-input flat" rows="'.($variant === 'page' ? '4' : '2').'" placeholder="'.dol_escape_htmltag($langs->trans("AiAssistantPlaceholder")).'"'.($ready ? '' : ' disabled').'></textarea>';
+	$html .= '<button type="submit" class="button aiassistant-send"'.($ready ? '' : ' disabled').'>'.dol_escape_htmltag($langs->trans("AiAssistantSend")).'</button>';
+	$html .= '</form>';
+	$html .= '</div>';
+	if ($includeAssets) {
+		$html .= '<script src="'.dol_escape_htmltag($jsurl).'"></script>';
+	}
+
+	return $html;
+}

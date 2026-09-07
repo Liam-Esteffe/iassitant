@@ -129,7 +129,7 @@ if (is_array($generated) && !empty($generated['error'])) {
 
 $parsed = aiassistantParseModelJson((string) $generated);
 $actionEngine = new AiAction($db);
-$safeActions = $actionEngine->storeProposedActions($parsed['actions'], $user, $question);
+$safeActions = $actionEngine->storeProposedActions($parsed['actions'], $user, $question, $langs);
 if (!aiassistantCanWrite($user)) {
 	foreach ($safeActions as $i => $action) {
 		$safeActions[$i]['can_write'] = 0;
