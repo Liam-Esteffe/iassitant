@@ -1,0 +1,41 @@
+# Module
+ModuleAiAssistantName = Assistant IA métier
+ModuleAiAssistantDesc = Widget d'analyse métier et d'actions confirmées (factures, commandes, tiers, produits)
+AiAssistantName = Assistant IA métier
+AiAssistantDescription = Assistant IA métier pour le tableau de bord
+AiAssistantDescriptionLong = Ajoute un widget conversationnel sur l'accueil. L'IA analyse les factures, commandes, tiers et produits, puis propose des actions exécutées uniquement après confirmation.
+AiAssistantSetup = Configuration de l'assistant IA
+AiAssistantSetupPage = Le widget utilise le module IA natif de Dolibarr pour les appels API. Configurez la clé et le service dans Accueil > Configuration > Modules > IA.
+AiAssistantNativeAiSetup = Ouvrir la configuration du module IA
+AiAssistantContextLimit = Nombre maximum de lignes de contexte
+AiAssistantContextLimitHelp = Limite le volume de données métier envoyé au modèle (par famille d'objets).
+AiAssistantEnableInvoices = Analyser et agir sur les factures
+AiAssistantEnableOrders = Analyser et agir sur les commandes
+AiAssistantEnableThirdparty = Analyser et agir sur les tiers
+AiAssistantEnableProducts = Analyser et agir sur les produits
+
+# Widget
+AiAssistantWidgetLabel = Assistant IA
+AiAssistantWidgetTitle = Assistant IA métier
+AiAssistantPlaceholder = Posez une question (impayés, stock, créer un client...)
+AiAssistantSend = Envoyer
+AiAssistantConfirm = Confirmer
+AiAssistantCancel = Annuler
+AiAssistantLoading = Analyse en cours...
+AiAssistantExecuting = Exécution de l'action...
+AiAssistantEmptyQuestion = Saisissez une question.
+AiAssistantWelcome = Posez une question sur vos factures, commandes, clients ou produits. Les actions en base ne seront exécutées qu'après votre confirmation.
+AiAssistantNeedAiModule = Le module IA n'est pas activé.
+AiAssistantNeedAiConfig = Le module IA n'est pas configuré (clé API ou URL manquante).
+AiAssistantNeedAiAssistant = Le module Assistant IA n'est pas activé.
+AiAssistantErrorGeneric = Une erreur est survenue.
+AiAssistantErrorParse = L'IA n'a pas renvoyé un résultat exploitable.
+AiAssistantActionDone = Action exécutée.
+AiAssistantNoAction = Aucune action proposée.
+AiAssistantUnknownAction = Action non autorisée.
+AiAssistantPermissionDenied = Droits insuffisants pour cette action.
+AiAssistantObjectNotFound = Objet introuvable.
+AiAssistantMissingField = Champ obligatoire manquant.
+AiAssistantCreated = Fiche créée
+AiAssistantUpdated = Fiche mise à jour
+AiAssistantReminderTitle = Relance proposée

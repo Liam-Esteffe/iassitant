@@ -1,0 +1,41 @@
+# Module
+ModuleAiAssistantName = Business AI assistant
+ModuleAiAssistantDesc = Dashboard widget for business analysis and confirmed actions (invoices, orders, third parties, products)
+AiAssistantName = Business AI assistant
+AiAssistantDescription = Business AI assistant for the dashboard
+AiAssistantDescriptionLong = Adds a conversational widget on the home page. The AI analyses invoices, orders, third parties and products, then proposes actions that run only after confirmation.
+AiAssistantSetup = AI assistant setup
+AiAssistantSetupPage = The widget uses the native Dolibarr AI module for API calls. Configure the key and service in Home > Setup > Modules > AI.
+AiAssistantNativeAiSetup = Open the native AI module setup
+AiAssistantContextLimit = Maximum context rows
+AiAssistantContextLimitHelp = Caps how many business rows are sent to the model (per object family).
+AiAssistantEnableInvoices = Analyse and act on invoices
+AiAssistantEnableOrders = Analyse and act on orders
+AiAssistantEnableThirdparty = Analyse and act on third parties
+AiAssistantEnableProducts = Analyse and act on products
+
+# Widget
+AiAssistantWidgetLabel = AI assistant
+AiAssistantWidgetTitle = Business AI assistant
+AiAssistantPlaceholder = Ask a question (unpaid invoices, stock, create a customer...)
+AiAssistantSend = Send
+AiAssistantConfirm = Confirm
+AiAssistantCancel = Cancel
+AiAssistantLoading = Analysing...
+AiAssistantExecuting = Running the action...
+AiAssistantEmptyQuestion = Please enter a question.
+AiAssistantWelcome = Ask about invoices, orders, customers or products. Database actions run only after you confirm them.
+AiAssistantNeedAiModule = The AI module is not enabled.
+AiAssistantNeedAiConfig = The AI module is not configured (missing API key or URL).
+AiAssistantNeedAiAssistant = The AI assistant module is not enabled.
+AiAssistantErrorGeneric = An error occurred.
+AiAssistantErrorParse = The AI did not return a usable result.
+AiAssistantActionDone = Action completed.
+AiAssistantNoAction = No action proposed.
+AiAssistantUnknownAction = Action is not allowed.
+AiAssistantPermissionDenied = Insufficient permissions for this action.
+AiAssistantObjectNotFound = Object not found.
+AiAssistantMissingField = A required field is missing.
+AiAssistantCreated = Record created
+AiAssistantUpdated = Record updated
+AiAssistantReminderTitle = Suggested reminder
