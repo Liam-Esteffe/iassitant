@@ -2,7 +2,9 @@
 
 Module Dolibarr externe qui ajoute un **widget conversationnel** sur l’accueil. L’IA analyse les factures, commandes, tiers et produits, puis propose des actions métier exécutées **uniquement après confirmation**.
 
-Il réutilise le [module IA natif](../../ai/README.md) (`modAi`) pour les appels API (ChatGPT, Groq, Mistral ou endpoint custom). Aucune requête SQL n’est générée par le modèle.
+Version **1.1.0** : droits, journal d’audit, aperçu avant écriture, prompts rapides, historique de session, setup guidé.
+
+Il réutilise le module IA natif de Dolibarr (`modAi`) pour les appels API (ChatGPT, Groq, Mistral ou endpoint custom). Aucune requête SQL n’est générée par le modèle.
 
 ## Prérequis
 
@@ -22,22 +24,21 @@ $dolibarr_main_document_root_alt = '/chemin/vers/dolibarr/htdocs/custom';
 2. Aller dans **Accueil > Configuration > Modules**.
 3. Activer **IA**, puis renseigner la clé dans sa page de configuration.
 4. Activer **Assistant IA métier**.
-5. Ouvrir **Accueil** : le widget apparaît dans une des deux colonnes du tableau de bord.
+5. Attribuer les droits **Utiliser l’assistant IA** et, si besoin, **Exécuter les actions**.
+6. Ouvrir **Accueil** : le widget apparaît dans une des deux colonnes du tableau de bord.
 
-S’il n’est pas visible, l’ajouter via le combo **Ajouter un widget** → **Assistant IA**.  
-Il peut ensuite être déplacé par glisser-déposer. La gestion globale se fait dans **Accueil > Configuration > Widgets**.
+S’il n’est pas visible, l’ajouter via le combo **Ajouter un widget** → **Assistant IA**.
 
-## Utilisation
+Après une mise à jour, **désactivez puis réactivez** le module pour créer la table `llx_aiassistant_log` et les nouveaux droits.
 
-Le flux est en deux temps :
+## Utilisation (v1.1)
 
-1. **Analyse** — poser une question, par exemple :
-   - « Quelles factures sont en retard ? »
-   - « Y a-t-il des alertes de stock ? »
-   - « Crée le client ACME »
-2. **Exécution** — si l’IA propose une action, cliquer sur **Confirmer**. Rien n’est écrit en base avant cette étape.
+1. Poser une question ou cliquer un **prompt rapide** (impayés, stock, commandes, créer un client).
+2. Lire l’analyse et le **récapitulatif des champs** de chaque action proposée.
+3. Cliquer **Voir le récapitulatif**, vérifier, puis **Exécuter**. Rien n’est écrit avant cette étape.
+4. L’admin consulte **Configuration > Journal**.
 
-Les factures et commandes créées restent **en brouillon** (pas de validation ni de paiement automatique).
+Les factures et commandes créées restent **en brouillon**.
 
 ## Actions autorisées
 
@@ -53,43 +54,42 @@ Hors périmètre : validation comptable, paiements, suppressions, SQL libre.
 
 ## Configuration
 
-**Accueil > Configuration > Modules > Assistant IA métier > Configuration**
+**Accueil > Configuration > Modules > Assistant IA métier**
 
-- nombre maximum de lignes de contexte envoyées au modèle
-- activation / désactivation par famille (factures, commandes, tiers, produits)
+- nombre maximum de lignes de contexte
+- activation par famille (factures, commandes, tiers, produits)
+- bouton **Tester l’appel IA**
+- onglets **Journal** et **À propos**
 
-La clé API se configure uniquement dans le module IA natif.
+La clé API se configure dans le module IA natif.
 
 ## Sécurité
 
-- session authentifiée obligatoire
-- jeton CSRF
-- droits Dolibarr revérifiés à l’exécution
-- payload limité à une whitelist de champs
-- actions proposées stockées en session (pas renvoyées au navigateur)
-- journalisation via `dol_syslog`
+- droits `aiassistant / assistant / read` et `write`
+- session authentifiée + jeton CSRF
+- droits métier Dolibarr revérifiés à l’exécution
+- payload whitelisté, stocké en session (pas renvoyé au navigateur)
+- aperçu des champs avant écriture
+- journal `llx_aiassistant_log` + `dol_syslog`
 
 ## Structure
 
 ```
 aiassistant/
-├── admin/setup.php
-├── ajax/chat.php
-├── ajax/execute.php
-├── class/aicontext.class.php
-├── class/aiaction.class.php
+├── admin/setup.php, log.php, about.php
+├── ajax/chat.php, execute.php, test.php
+├── class/aicontext.class.php, aiaction.class.php
 ├── core/modules/modAiAssistant.class.php
 ├── core/boxes/aiassistantwidget.php
-├── css/aiassistant.css
-├── js/aiassistant.js
-├── langs/fr_FR/aiassistant.lang
-├── langs/en_US/aiassistant.lang
-└── lib/aiassistant.lib.php
+├── sql/llx_aiassistant_log.sql
+├── css/, js/, langs/, lib/
+├── ChangeLog.md
+└── COPYING
 ```
 
-- Descripteur : numéro `500100`, dépendance `modAi`
-- Widget Home : `aiassistantwidget.php@aiassistant`
+- Descripteur : numéro `500100`, version `1.1.0`, dépendance `modAi`
+- Éditeur : Liam Esteffe — https://github.com/Liam-Esteffe/iassitant
 
 ## Licence
 
-GNU General Public License v3, comme Dolibarr.
+GNU General Public License v3. Voir `COPYING`.

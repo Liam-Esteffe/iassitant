@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2026 SuperAdmin
+/* Copyright (C) 2026 Liam Esteffe
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -86,9 +86,10 @@ class AiAction
 	 *
 	 * @param	array<int,array<string,mixed>>	$actions	Actions proposed by the model
 	 * @param	User							$user		Current user
-	 * @return	array<int,array{id:string,type:string,label:string}>
+	 * @param	string							$question	Original user question
+	 * @return	array<int,array{id:string,type:string,label:string,preview:array<int,array{label:string,value:string}>}>
 	 */
-	public function storeProposedActions(array $actions, User $user)
+	public function storeProposedActions(array $actions, User $user, $question = '')
 	{
 		$allowed = $this->getAllowedTypes();
 		$safe = array();
@@ -111,11 +112,13 @@ class AiAction
 				'payload' => $payload,
 				'userid' => (int) $user->id,
 				'tms' => dol_now(),
+				'question' => dol_trunc($this->sanitizeString($question), 255),
 			);
 			$safe[] = array(
 				'id' => $id,
 				'type' => $type,
 				'label' => !empty($action['label']) ? (string) $action['label'] : $type,
+				'preview' => $this->buildPreview($type, $payload),
 			);
 		}
 
@@ -146,6 +149,13 @@ class AiAction
 		}
 
 		$result = $this->execute($stored['type'], $stored['payload'], $user, $langs);
+		$this->logAction(
+			$user,
+			$stored['type'],
+			$stored['payload'],
+			(string) ($stored['question'] ?? ''),
+			$result
+		);
 		if (is_array($result) && !empty($result['success'])) {
 			unset($_SESSION[self::SESSION_KEY][$actionId]);
 		}
@@ -235,6 +245,9 @@ class AiAction
 			'success' => true,
 			'message' => $langs->trans("AiAssistantCreated"),
 			'url' => $soc->getNomUrl(1),
+			'object_type' => 'societe',
+			'fk_object' => (int) $id,
+			'object_ref' => $soc->name,
 		);
 	}
 
@@ -296,6 +309,9 @@ class AiAction
 			'success' => true,
 			'message' => $langs->trans("AiAssistantUpdated"),
 			'url' => $soc->getNomUrl(1),
+			'object_type' => 'societe',
+			'fk_object' => (int) $soc->id,
+			'object_ref' => $soc->name,
 		);
 	}
 
@@ -357,6 +373,9 @@ class AiAction
 			'success' => true,
 			'message' => $langs->trans("AiAssistantCreated"),
 			'url' => $product->getNomUrl(1),
+			'object_type' => 'product',
+			'fk_object' => (int) $id,
+			'object_ref' => $product->ref,
 		);
 	}
 
@@ -416,6 +435,9 @@ class AiAction
 			'success' => true,
 			'message' => $langs->trans("AiAssistantCreated"),
 			'url' => $facture->getNomUrl(1),
+			'object_type' => 'facture',
+			'fk_object' => (int) $id,
+			'object_ref' => $facture->ref,
 		);
 	}
 
@@ -476,6 +498,9 @@ class AiAction
 			'success' => true,
 			'message' => $langs->trans("AiAssistantCreated"),
 			'url' => $commande->getNomUrl(1),
+			'object_type' => 'commande',
+			'fk_object' => (int) $id,
+			'object_ref' => $commande->ref,
 		);
 	}
 
@@ -528,6 +553,9 @@ class AiAction
 			'success' => true,
 			'message' => $langs->trans("AiAssistantReminderTitle")."\n".trim((string) $generated),
 			'url' => $facture->getNomUrl(1),
+			'object_type' => 'facture',
+			'fk_object' => (int) $facture->id,
+			'object_ref' => $facture->ref,
 		);
 	}
 
@@ -605,6 +633,110 @@ class AiAction
 			);
 		}
 		return $normalized;
+	}
+
+	/**
+	 * Human-readable preview of a pending action (whitelisted fields only).
+	 *
+	 * @param	string	$type		Action type
+	 * @param	array	$payload	Action payload
+	 * @return	array<int,array{label:string,value:string}>
+	 */
+	public function buildPreview($type, array $payload)
+	{
+		$rows = array(
+			array('label' => 'type', 'value' => (string) $type),
+		);
+
+		$simple = array(
+			'name' => 'name',
+			'nom' => 'name',
+			'email' => 'email',
+			'phone' => 'phone',
+			'tel' => 'phone',
+			'address' => 'address',
+			'zip' => 'zip',
+			'town' => 'town',
+			'city' => 'town',
+			'ref' => 'ref',
+			'label' => 'label',
+			'price' => 'price',
+			'tva_tx' => 'tva_tx',
+			'thirdparty_name' => 'thirdparty',
+			'socid' => 'socid',
+			'id' => 'id',
+			'invoice_id' => 'invoice_id',
+			'client' => 'client',
+			'fournisseur' => 'fournisseur',
+			'type' => 'product_type',
+		);
+		$seen = array();
+		foreach ($simple as $from => $label) {
+			if (!array_key_exists($from, $payload) || $payload[$from] === '' || $payload[$from] === null) {
+				continue;
+			}
+			if (isset($seen[$label])) {
+				continue;
+			}
+			$seen[$label] = 1;
+			$rows[] = array(
+				'label' => $label,
+				'value' => $this->sanitizeString(is_scalar($payload[$from]) ? (string) $payload[$from] : json_encode($payload[$from])),
+			);
+		}
+
+		$lines = $this->normalizeLines($payload['lines'] ?? array());
+		if (!empty($lines)) {
+			$parts = array();
+			foreach ($lines as $line) {
+				$parts[] = $line['qty'].' x '.$line['desc'].' @ '.$line['price'];
+			}
+			$rows[] = array('label' => 'lines', 'value' => implode(' | ', $parts));
+		}
+
+		return $rows;
+	}
+
+	/**
+	 * Persist an executed action in the audit table.
+	 *
+	 * @param	User								$user		Current user
+	 * @param	string								$type		Action type
+	 * @param	array								$payload	Payload
+	 * @param	string								$question	Original question
+	 * @param	array{success?:bool,message?:string,object_type?:string,fk_object?:int,object_ref?:string}|int	$result	Execution result
+	 * @return	void
+	 */
+	public function logAction(User $user, $type, array $payload, $question, $result)
+	{
+		global $conf;
+
+		$success = is_array($result) && !empty($result['success']);
+		$summary = array();
+		foreach ($this->buildPreview($type, $payload) as $row) {
+			$summary[] = $row['label'].': '.$row['value'];
+		}
+
+		$sql = "INSERT INTO ".$this->db->prefix()."aiassistant_log (";
+		$sql .= "entity, datec, fk_user, question, action_type, payload_summary, status, error_message, object_type, fk_object, object_ref";
+		$sql .= ") VALUES (";
+		$sql .= ((int) $conf->entity).",";
+		$sql .= "'".$this->db->idate(dol_now())."',";
+		$sql .= ((int) $user->id).",";
+		$sql .= "'".$this->db->escape(dol_trunc((string) $question, 255))."',";
+		$sql .= "'".$this->db->escape($type)."',";
+		$sql .= "'".$this->db->escape(dol_trunc(implode('; ', $summary), 2000))."',";
+		$sql .= "'".$this->db->escape($success ? 'success' : 'error')."',";
+		$sql .= "'".$this->db->escape($success ? '' : ($this->error ?: (is_array($result) ? (string) ($result['message'] ?? '') : '')))."',";
+		$sql .= "'".$this->db->escape((string) (is_array($result) ? ($result['object_type'] ?? '') : ''))."',";
+		$sql .= ((int) (is_array($result) ? ($result['fk_object'] ?? 0) : 0)).",";
+		$sql .= "'".$this->db->escape((string) (is_array($result) ? ($result['object_ref'] ?? '') : ''))."'";
+		$sql .= ")";
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__.' '.$this->db->lasterror(), LOG_ERR);
+		}
 	}
 
 	/**

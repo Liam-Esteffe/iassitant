@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2026 SuperAdmin
+/* Copyright (C) 2026 Liam Esteffe
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -55,7 +55,7 @@ class aiassistantwidget extends ModeleBoxes
 
 		parent::__construct($db, $param);
 
-		$this->hidden = !isModEnabled('aiassistant') || !isModEnabled('ai') || !empty($user->socid);
+		$this->hidden = !isModEnabled('aiassistant') || !isModEnabled('ai') || !empty($user->socid) || !aiassistantCanRead($user);
 	}
 
 	/**
@@ -66,7 +66,7 @@ class aiassistantwidget extends ModeleBoxes
 	 */
 	public function loadBox($max = 5)
 	{
-		global $langs;
+		global $langs, $user;
 
 		$langs->load("aiassistant@aiassistant");
 
@@ -77,11 +77,12 @@ class aiassistantwidget extends ModeleBoxes
 		);
 
 		$ready = isModEnabled('ai') && isModEnabled('aiassistant') && aiassistantIsNativeAiConfigured();
+		$canWrite = aiassistantCanWrite($user);
 		$warning = '';
 		if (!isModEnabled('ai')) {
-			$warning = $langs->trans("AiAssistantNeedAiModule");
+			$warning = $langs->trans("AiAssistantNeedAiModule").' '.$langs->trans("AiAssistantSetupHint");
 		} elseif (!aiassistantIsNativeAiConfigured()) {
-			$warning = $langs->trans("AiAssistantNeedAiConfig");
+			$warning = $langs->trans("AiAssistantNeedAiConfig").' '.$langs->trans("AiAssistantSetupHint");
 		}
 
 		$cssurl = dol_buildpath('/aiassistant/css/aiassistant.css', 1);
@@ -90,13 +91,23 @@ class aiassistantwidget extends ModeleBoxes
 		$execurl = dol_buildpath('/aiassistant/ajax/execute.php', 1);
 		$token = currentToken();
 
+		$prompts = array(
+			'unpaid' => $langs->trans("AiAssistantPromptUnpaid"),
+			'stock' => $langs->trans("AiAssistantPromptStock"),
+			'orders' => $langs->trans("AiAssistantPromptOrders"),
+			'customer' => $langs->trans("AiAssistantPromptCustomer"),
+		);
+
 		$html = '<div class="aiassistant-widget"';
 		$html .= ' data-chat-url="'.dol_escape_htmltag($chaturl).'"';
 		$html .= ' data-execute-url="'.dol_escape_htmltag($execurl).'"';
 		$html .= ' data-token="'.dol_escape_htmltag($token).'"';
+		$html .= ' data-can-write="'.($canWrite ? '1' : '0').'"';
 		$html .= ' data-lang-send="'.dol_escape_htmltag($langs->trans("AiAssistantSend")).'"';
 		$html .= ' data-lang-confirm="'.dol_escape_htmltag($langs->trans("AiAssistantConfirm")).'"';
+		$html .= ' data-lang-execute="'.dol_escape_htmltag($langs->trans("AiAssistantExecute")).'"';
 		$html .= ' data-lang-cancel="'.dol_escape_htmltag($langs->trans("AiAssistantCancel")).'"';
+		$html .= ' data-lang-preview="'.dol_escape_htmltag($langs->trans("AiAssistantPreviewHelp")).'"';
 		$html .= ' data-lang-loading="'.dol_escape_htmltag($langs->trans("AiAssistantLoading")).'"';
 		$html .= ' data-lang-executing="'.dol_escape_htmltag($langs->trans("AiAssistantExecuting")).'"';
 		$html .= ' data-lang-empty="'.dol_escape_htmltag($langs->trans("AiAssistantEmptyQuestion")).'"';
@@ -110,6 +121,13 @@ class aiassistantwidget extends ModeleBoxes
 			$html .= '<div class="aiassistant-msg aiassistant-msg-bot">'.dol_escape_htmltag($langs->trans("AiAssistantWelcome")).'</div>';
 		}
 		$html .= '</div>';
+		if ($ready) {
+			$html .= '<div class="aiassistant-quickbar">';
+			foreach ($prompts as $label) {
+				$html .= '<button type="button" class="butAction aiassistant-quick" data-prompt="'.dol_escape_htmltag($label).'">'.dol_escape_htmltag($label).'</button>';
+			}
+			$html .= '</div>';
+		}
 		$html .= '<form class="aiassistant-form" action="#" method="POST">';
 		$html .= '<textarea class="aiassistant-input flat" rows="2" placeholder="'.dol_escape_htmltag($langs->trans("AiAssistantPlaceholder")).'"'.($ready ? '' : ' disabled').'></textarea>';
 		$html .= '<button type="submit" class="button aiassistant-send"'.($ready ? '' : ' disabled').'>'.dol_escape_htmltag($langs->trans("AiAssistantSend")).'</button>';

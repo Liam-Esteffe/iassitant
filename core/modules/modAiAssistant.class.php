@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2026 SuperAdmin
+/* Copyright (C) 2026 Liam Esteffe
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -49,9 +49,9 @@ class modAiAssistant extends DolibarrModules
 		$this->name = preg_replace('/^mod/i', '', get_class($this));
 		$this->description = "AiAssistantDescription";
 		$this->descriptionlong = "AiAssistantDescriptionLong";
-		$this->editor_name = 'AiAssistant';
-		$this->editor_url = '';
-		$this->version = '1.0.0';
+		$this->editor_name = 'Liam Esteffe';
+		$this->editor_url = 'https://github.com/Liam-Esteffe/iassitant';
+		$this->version = '1.1.0';
 		$this->const_name = 'MAIN_MODULE_'.strtoupper($this->name);
 		$this->picto = 'fa-magic';
 
@@ -111,7 +111,19 @@ class modAiAssistant extends DolibarrModules
 		);
 
 		$this->cronjobs = array();
+
 		$this->rights = array();
+		$r = 0;
+		$this->rights[$r][0] = $this->numero.sprintf("%02d", 1);
+		$this->rights[$r][1] = 'Use the AI assistant widget';
+		$this->rights[$r][4] = 'assistant';
+		$this->rights[$r][5] = 'read';
+		$r++;
+		$this->rights[$r][0] = $this->numero.sprintf("%02d", 2);
+		$this->rights[$r][1] = 'Execute confirmed AI assistant actions';
+		$this->rights[$r][4] = 'assistant';
+		$this->rights[$r][5] = 'write';
+
 		$this->menu = array();
 	}
 
@@ -123,6 +135,11 @@ class modAiAssistant extends DolibarrModules
 	 */
 	public function init($options = '')
 	{
+		$result = $this->_load_tables('/aiassistant/sql/');
+		if ($result < 0) {
+			return -1;
+		}
+
 		$this->remove($options);
 
 		$sql = array();

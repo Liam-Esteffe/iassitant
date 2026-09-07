@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2026 SuperAdmin
+/* Copyright (C) 2026 Liam Esteffe
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -93,6 +93,9 @@ if (empty($user->id)) {
 if (!isModEnabled('aiassistant')) {
 	aiassistantJsonExit(array('success' => false, 'error' => $langs->trans("AiAssistantNeedAiAssistant")), 403);
 }
+if (!aiassistantCanRead($user)) {
+	aiassistantJsonExit(array('success' => false, 'error' => $langs->trans("AiAssistantPermissionDenied")), 403);
+}
 if (!isModEnabled('ai')) {
 	aiassistantJsonExit(array('success' => false, 'error' => $langs->trans("AiAssistantNeedAiModule")), 403);
 }
@@ -126,7 +129,16 @@ if (is_array($generated) && !empty($generated['error'])) {
 
 $parsed = aiassistantParseModelJson((string) $generated);
 $actionEngine = new AiAction($db);
-$safeActions = $actionEngine->storeProposedActions($parsed['actions'], $user);
+$safeActions = $actionEngine->storeProposedActions($parsed['actions'], $user, $question);
+if (!aiassistantCanWrite($user)) {
+	foreach ($safeActions as $i => $action) {
+		$safeActions[$i]['can_write'] = 0;
+	}
+} else {
+	foreach ($safeActions as $i => $action) {
+		$safeActions[$i]['can_write'] = 1;
+	}
+}
 
 aiassistantJsonExit(array(
 	'success' => true,

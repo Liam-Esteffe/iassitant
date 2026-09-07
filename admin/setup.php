@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2026 SuperAdmin
+/* Copyright (C) 2026 Liam Esteffe
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -91,10 +91,15 @@ print load_fiche_titre($langs->trans("AiAssistantSetup"), $linkback, 'title_setu
 $head = aiassistantAdminPrepareHead();
 print dol_get_fiche_head($head, 'settings', $langs->trans("AiAssistantSetup"), -1, "fa-magic");
 
-print '<span class="opacitymedium">'.$langs->trans("AiAssistantSetupPage").'</span><br><br>';
+print '<span class="opacitymedium">'.$langs->trans("AiAssistantSetupPage").'</span><br>';
+print '<p class="opacitymedium">'.$langs->trans("AiAssistantReactivateHint").'</p>';
 
 if (isModEnabled('ai')) {
-	print '<p><a class="butAction" href="'.DOL_URL_ROOT.'/ai/admin/setup.php">'.$langs->trans("AiAssistantNativeAiSetup").'</a></p>';
+	print '<p>';
+	print '<a class="butAction" href="'.DOL_URL_ROOT.'/ai/admin/setup.php">'.$langs->trans("AiAssistantNativeAiSetup").'</a> ';
+	print '<a class="butAction" href="#" id="aiassistant-test-ai">'.$langs->trans("AiAssistantTestAi").'</a>';
+	print '</p>';
+	print '<div id="aiassistant-test-result" class="opacitymedium"></div>';
 } else {
 	print '<div class="warning">'.$langs->trans("AiAssistantNeedAiModule").'</div>';
 }
@@ -102,6 +107,34 @@ if (isModEnabled('ai')) {
 print $formSetup->generateOutput(true);
 
 print dol_get_fiche_end();
+
+$testurl = dol_buildpath('/aiassistant/ajax/test.php', 1);
+print '<script>
+jQuery(function($) {
+	$("#aiassistant-test-ai").on("click", function(e) {
+		e.preventDefault();
+		var $out = $("#aiassistant-test-result");
+		$out.text('.json_encode($langs->trans("AiAssistantLoading")).');
+		$.ajax({
+			url: '.json_encode($testurl).'?token='.json_encode(currentToken()).',
+			type: "POST",
+			contentType: "application/json",
+			data: "{}",
+			success: function(data) {
+				$out.text((data && data.message) ? data.message : '.json_encode($langs->trans("AiAssistantTestOk")).');
+			},
+			error: function(xhr) {
+				var msg = '.json_encode($langs->trans("AiAssistantErrorGeneric")).';
+				try {
+					var parsed = JSON.parse(xhr.responseText);
+					if (parsed.error) { msg = parsed.error; }
+				} catch (err) {}
+				$out.text(msg);
+			}
+		});
+	});
+});
+</script>';
 
 llxFooter();
 $db->close();

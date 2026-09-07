@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2026 SuperAdmin
+/* Copyright (C) 2026 Liam Esteffe
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -88,6 +88,9 @@ if (empty($user->id)) {
 }
 if (!isModEnabled('aiassistant')) {
 	aiassistantExecuteJsonExit(array('success' => false, 'error' => $langs->trans("AiAssistantNeedAiAssistant")), 403);
+}
+if (!aiassistantCanWrite($user)) {
+	aiassistantExecuteJsonExit(array('success' => false, 'error' => $langs->trans("AiAssistantPermissionDenied")), 403);
 }
 if (!isModEnabled('ai')) {
 	aiassistantExecuteJsonExit(array('success' => false, 'error' => $langs->trans("AiAssistantNeedAiModule")), 403);

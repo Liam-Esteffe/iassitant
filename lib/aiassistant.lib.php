@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2026 SuperAdmin
+/* Copyright (C) 2026 Liam Esteffe
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,6 +38,16 @@ function aiassistantAdminPrepareHead()
 	$head[$h][0] = dol_buildpath("/aiassistant/admin/setup.php", 1);
 	$head[$h][1] = $langs->trans("Settings");
 	$head[$h][2] = 'settings';
+	$h++;
+
+	$head[$h][0] = dol_buildpath("/aiassistant/admin/log.php", 1);
+	$head[$h][1] = $langs->trans("AiAssistantLog");
+	$head[$h][2] = 'log';
+	$h++;
+
+	$head[$h][0] = dol_buildpath("/aiassistant/admin/about.php", 1);
+	$head[$h][1] = $langs->trans("About");
+	$head[$h][2] = 'about';
 	$h++;
 
 	complete_head_from_modules($conf, $langs, null, $head, $h, 'aiassistant@aiassistant');
@@ -118,4 +128,26 @@ function aiassistantParseModelJson($raw)
 	}
 
 	return $result;
+}
+
+/**
+ * True if the user can use the assistant widget.
+ *
+ * @param	User	$user	Current user
+ * @return	bool
+ */
+function aiassistantCanRead(User $user)
+{
+	return !empty($user->admin) || $user->hasRight('aiassistant', 'assistant', 'read');
+}
+
+/**
+ * True if the user can confirm and execute actions.
+ *
+ * @param	User	$user	Current user
+ * @return	bool
+ */
+function aiassistantCanWrite(User $user)
+{
+	return !empty($user->admin) || $user->hasRight('aiassistant', 'assistant', 'write');
 }

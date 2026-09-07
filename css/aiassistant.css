@@ -80,3 +80,44 @@
 	opacity: 0.7;
 	font-style: italic;
 }
+
+.aiassistant-quickbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 8px;
+}
+
+.aiassistant-preview {
+	margin: 6px 0 0;
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 2px 8px;
+	font-size: 0.9em;
+}
+
+.aiassistant-preview dt {
+	font-weight: 600;
+}
+
+.aiassistant-preview dd {
+	margin: 0;
+}
+
+.aiassistant-action {
+	display: block;
+}
+
+.aiassistant-action-buttons,
+.aiassistant-action-execute {
+	margin-top: 8px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	align-items: center;
+}
+
+.aiassistant-action-execute.hidden,
+.aiassistant-confirm.hidden {
+	display: none;
+}
